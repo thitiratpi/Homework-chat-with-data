@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import google.generativeai as genai
+from datetime import datetime
 
 # ------------------ CONFIG ------------------
 st.set_page_config(page_title="🤖 CSV Chatbot with Gemini", layout="wide")
