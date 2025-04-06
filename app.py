@@ -28,7 +28,7 @@ if "dictionary" not in st.session_state:
     st.session_state.dictionary = None
 
 # ---------- FILE UPLOAD ----------
-st.subheader("📤 Upload CSV and Optional Dictionary")
+st.subheader("📤 Upload CSV: Data Transaction and Data Dictionary")
 data_file = st.file_uploader("Upload Data Transaction", type=["csv"])
 dict_file = st.file_uploader("Upload Data Dictionary", type=["csv", "txt"])
 
