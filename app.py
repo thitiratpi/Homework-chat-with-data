@@ -33,8 +33,8 @@ if "dictionary" not in st.session_state:
 # File upload
 st.subheader("📤 Upload CSV and Optional Dictionary")
 
-data_file = st.file_uploader("Upload CSV Data File", type=["csv"])
-dict_file = st.file_uploader("Upload Dictionary File (optional)", type=["csv", "txt"])
+data_file = st.file_uploader("Upload Data Transation", type=["csv"])
+dict_file = st.file_uploader("Upload Data Dictionary", type=["csv", "txt"])
 
 # Load files
 if data_file:
