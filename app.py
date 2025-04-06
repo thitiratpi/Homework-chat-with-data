@@ -52,7 +52,7 @@ if question := st.chat_input("Ask a Python-style question about the data..."):
             data_dict_text = st.session_state.dataframe.dtypes.to_string()
             example_record = st.session_state.dataframe.head(2).to_string()
 
-            # Prompt for code generation
+            # Prompt
             prompt = f"""
 You are a helpful Python code generator.
 Your goal is to write Python code snippets based on the user's question
@@ -77,52 +77,41 @@ Here's the context:
 3. Do not import pandas
 4. Change date column type to datetime
 5. **Store the result of the executed code in a variable named `ANSWER`.**
-   This variable should hold the answer to the user's question (e.g., a filtered DataFrame, a calculated value, etc.).
 6. Assume the DataFrame is already loaded into a pandas DataFrame object named `{df_name}`. Do not include code to load the DataFrame.
-7. Keep the generated code concise and focused on answering the question.
-8. If the question requires a specific output format (e.g., a list, a single value), ensure the query_result variable holds that format.
+7. Keep the generated code concise.
+"""
 
-**Example:**
-If the user asks: "Show me the rows where the 'age' column is greater than 30."
-And the DataFrame has an 'age' column.
-The generated code should look something like this (inside the exec() string):
+            # Get response
+            response = model.generate_content(prompt)
+            raw_code = response.text
 
-```python
-query_result = {df_name}[{df_name}['age'] > 30]
+            # 🔧 Clean markdown wrappers
+            if "```" in raw_code:
+                code_lines = raw_code.strip().split("```")
+                cleaned_code = code_lines[1] if len(code_lines) > 1 else code_lines[0]
+            else:
+                cleaned_code = raw_code.strip()
 
-        # Generate Python code using Gemini
-        response = model.generate_content(prompt)
-        generated_code = response.text
-        st.code(generated_code, language='python')
+            st.code(cleaned_code, language='python')
 
-        # Execute the generated code
-        exec_locals = {"df": st.session_state.dataframe}
-        exec(generated_code, {}, exec_locals)
+            # Execute code safely
+            exec_locals = {"df": st.session_state.dataframe}
+            try:
+                exec(cleaned_code, {}, exec_locals)
 
-        # Display the result from variable `ANSWER`
-        if "ANSWER" in exec_locals:
-            st.success("✅ Result from executed code:")
-            st.write(exec_locals["ANSWER"])
-            st.session_state.chat_history.append(("assistant", f"```python\n{generated_code}\n```\n\n**Result:**\n{exec_locals['ANSWER']}"))
-            st.chat_message("assistant").markdown(f"```python\n{generated_code}\n```\n\n**Result:**\n{exec_locals['ANSWER']}")
-        else:
-            st.warning("⚠️ No variable named `ANSWER` was defined in the generated code.")
+                if "ANSWER" in exec_locals:
+                    result = exec_locals["ANSWER"]
+                    st.success("✅ Result from executed code:")
+                    st.write(result)
+                    st.session_state.chat_history.append(("assistant", f"```python\n{cleaned_code}\n```\n\n**Result:**\n{result}"))
+                    st.chat_message("assistant").markdown(f"```python\n{cleaned_code}\n```\n\n**Result:**\n{result}")
+                else:
+                    st.warning("⚠️ Code executed, but no variable named `ANSWER` was found.")
 
-    except Exception as e:
-        st.error(f"❌ Error while generating or executing code: {e}")
-else:
-    st.warning("Please upload a CSV and provide a valid API key.")
+            except Exception as exec_err:
+                st.error(f"❌ Error while executing code:\n```\n{exec_err}\n```")
 
-
----
-
-### ✅ ตัวอย่างคำถามที่รองรับ:
-- "แสดงยอดขายเฉลี่ยต่อเดือน"
-- "กรองเฉพาะข้อมูลเดือนมกราคม"
-- "ยอดขายรวมในปี 2024 เท่าไหร่"
-- "มีสินค้ากี่ประเภท"
-
----
-
-ถ้าต้องการให้ AI แสดงกราฟ หรือ export โค้ดที่ได้ออกเป็น .py/.ipynb ก็บอกได้เลยครับ  
-จะให้รองรับหลายตาราง หรือเชื่อมหลายไฟล์ก็ทำได้เช่นกัน! 🔥
+        except Exception as e:
+            st.error(f"❌ Error while generating code from Gemini:\n```\n{e}\n```")
+    else:
+        st.warning("Please upload a CSV and enter an API key.")
