@@ -3,46 +3,48 @@ import pandas as pd
 import google.generativeai as genai
 
 # Page config
-st.set_page_config(page_title="📊 CSV Chatbot with Gemini", layout="wide")
+st.set_page_config(page_title="🤖 CSV Chatbot with Gemini", layout="wide")
 
 st.title("🤖 CSV Chatbot with Gemini")
-st.write("Upload your dataset and ask questions in natural language!")
+st.write("Upload your dataset and ask questions. Gemini will answer with context awareness!")
 
-# API Key input
-gemini_api_key = st.secrets['gemini_api_key']
-model = None
+# Load API Key & configure Gemini
+try:
+    key = st.secrets['gemini_api_key']
+    genai.configure(api_key=key)
+    model = genai.GenerativeModel('gemini-2.0-flash-lite')
 
-if gemini_api_key:
-    try:
-        genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash-lite")
-        st.success("✅ Gemini API Key configured.")
-    except Exception as e:
-        st.error(f"❌ Failed to configure Gemini: {e}")
+    # Create chat session with history
+    if "chat" not in st.session_state:
+        st.session_state.chat = model.start_chat(history=[])
 
-# Session state init
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+    # Chat role converter
+    def role_to_streamlit(role: str) -> str:
+        return "assistant" if role == "model" else role
 
+except Exception as e:
+    st.error(f"❌ Error initializing Gemini: {e}")
+    st.stop()
+
+# Initialize session state
 if "dataframe" not in st.session_state:
     st.session_state.dataframe = None
 
 if "dictionary" not in st.session_state:
     st.session_state.dictionary = None
 
-# File upload
+# File upload section
 st.subheader("📤 Upload CSV and Optional Dictionary")
 
-data_file = st.file_uploader("Upload Data Transation", type=["csv"])
+data_file = st.file_uploader("Upload Data Transaction", type=["csv"])
 dict_file = st.file_uploader("Upload Data Dictionary", type=["csv", "txt"])
 
-# Load files
 if data_file:
     try:
         df = pd.read_csv(data_file)
         st.session_state.dataframe = df
         st.success("✅ Data loaded")
-        st.write("### Preview of Data")
+        st.write("### Data Preview")
         st.dataframe(df.head())
     except Exception as e:
         st.error(f"❌ Error reading data file: {e}")
@@ -59,43 +61,48 @@ if dict_file:
     except Exception as e:
         st.error(f"❌ Error reading dictionary file: {e}")
 
-# Chat input
-st.subheader("💬 Ask Questions About Your Data")
+# Display previous chat history from Gemini
+for message in st.session_state.chat.history:
+    with st.chat_message(role_to_streamlit(message.role)):
+        st.markdown(message.parts[0].text)
 
-if prompt := st.chat_input("Ask me anything about your data..."):
-    # Display user message
-    st.session_state.chat_history.append(("user", prompt))
-    st.chat_message("user").markdown(prompt)
+# Chat input from user
+if prompt := st.chat_input("💬 Ask me anything about your data..."):
+    with st.chat_message("user"):
+        st.markdown(prompt)
 
-    if model and st.session_state.dataframe is not None:
-        try:
-            # Build context for Gemini: data + dictionary
-            df_desc = st.session_state.dataframe.describe(include='all').to_string()
-            sample_data = st.session_state.dataframe.head(3).to_string()
-            dict_info = st.session_state.dictionary or "No dictionary provided."
+    # Build context-aware system prompt
+    df = st.session_state.dataframe
+    dict_info = st.session_state.dictionary or "No dictionary provided."
+    df_context = ""
 
-            system_prompt = f"""
-You are a data analyst AI. You are helping the user understand and analyze their CSV data.
-
+    if df is not None:
+        sample_data = df.head(3).to_string()
+        stats = df.describe(include="all").to_string()
+        df_context = f"""
 **Data Preview:**
 {sample_data}
 
 **Statistical Summary:**
-{df_desc}
+{stats}
 
 **Data Dictionary:**
 {dict_info}
-
-Now, answer the following question based on this data.
 """
 
-            response = model.generate_content(system_prompt + "\n\n" + prompt)
-            answer = response.text
+    system_prompt = f"""
+You are a data analyst AI. Use the following data context to help answer the user's question.
 
-            st.session_state.chat_history.append(("assistant", answer))
-            st.chat_message("assistant").markdown(answer)
+{df_context}
 
-        except Exception as e:
-            st.error(f"⚠️ Error generating response: {e}")
-    else:
-        st.warning("⚠️ Please upload a CSV file and enter a valid API key.")
+User Question:
+{prompt}
+"""
+
+    try:
+        # Send system+user message to Gemini
+        response = st.session_state.chat.send_message(system_prompt)
+        with st.chat_message("assistant"):
+            st.markdown(response.text)
+    except Exception as e:
+        st.error(f"❌ Error generating response: {e}")
