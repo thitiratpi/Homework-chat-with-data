@@ -48,7 +48,7 @@ if uploaded_file is not None:
 analyze_data_checkbox = st.checkbox("Analyze CSV Data with AI")
 
 # Capture user input and generate bot response
-if user_input := st.chat_input("Type your message here..."):
+if user_input := st.chat_input("Which lipstick brand's sales would you like to know?..."):
   # Store and display user message
   st.session_state.chat_history.append(("user", user_input))
   st.chat_message("user").markdown(user_input)
