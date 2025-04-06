@@ -6,91 +6,95 @@ import google.generativeai as genai
 st.title("🐧 My Chatbot and Data Analysis App")
 st.subheader("Conversation and Data Analysis")
 
-# Capture Gemini API Key
-gemini_api_key = st.text_input(
-    "Gemini API Key: ", placeholder="Type your API Key here...", type="password"
-)
+# --- API Key ---
+gemini_api_key = st.text_input("Gemini API Key: ", placeholder="Type your API Key here...", type="password")
 
-# Initialize the Gemini Model
+# --- Load Gemini Model ---
 model = None
 if gemini_api_key:
     try:
-        # Configure Gemini with the provided API Key
         genai.configure(api_key=gemini_api_key)
         model = genai.GenerativeModel("gemini-2.0-flash-lite")
         st.success("Gemini API Key successfully configured.")
     except Exception as e:
         st.error(f"An error occurred while setting up the Gemini model: {e}")
 
-# Initialize session state for storing chat history and data
+# --- Session State Setup ---
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 if "uploaded_data" not in st.session_state:
     st.session_state.uploaded_data = None
 
-# Display previous chat history using st.chat_message (if available)
+if "uploaded_dict" not in st.session_state:
+    st.session_state.uploaded_dict = None
+
+# --- Display Chat History ---
 for role, message in st.session_state.chat_history:
     st.chat_message(role).markdown(message)
 
-# Add a file uploader for CSV data
+# --- File Uploads ---
 st.subheader("Upload CSV for Analysis")
-uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
+uploaded_file = st.file_uploader("Choose a **CSV data file**", type=["csv"])
 
+st.subheader("Upload Dictionary File (optional)")
+dict_file = st.file_uploader("Choose a **dictionary file** (CSV or TXT)", type=["csv", "txt"])
+
+# --- Load Files ---
 if uploaded_file is not None:
     try:
-        # Load the uploaded CSV file
         st.session_state.uploaded_data = pd.read_csv(uploaded_file)
-        st.success("File successfully uploaded and read.")
-
-        # Display the content of the CSV
-        st.write("### Uploaded Data Preview")
+        st.success("Data file uploaded successfully.")
+        st.write("### Data Preview")
         st.dataframe(st.session_state.uploaded_data.head())
     except Exception as e:
-        st.error(f"An error occurred while reading the file: {e}")
+        st.error(f"Failed to read the data file: {e}")
 
-# Checkbox for indicating data analysis need
+if dict_file is not None:
+    try:
+        if dict_file.name.endswith(".csv"):
+            dict_df = pd.read_csv(dict_file)
+            st.session_state.uploaded_dict = dict_df.to_string()
+        else:
+            st.session_state.uploaded_dict = dict_file.read().decode("utf-8")
+        st.success("Dictionary file uploaded successfully.")
+    except Exception as e:
+        st.error(f"Failed to read the dictionary file: {e}")
+
+# --- Checkbox for Analysis ---
 analyze_data_checkbox = st.checkbox("Analyze CSV Data with AI")
 
-# Capture user input and generate bot response
+# --- User Chat Input ---
 if user_input := st.chat_input("Type your message here..."):
-    # Store and display user message
     st.session_state.chat_history.append(("user", user_input))
     st.chat_message("user").markdown(user_input)
 
     if model:
         try:
             if st.session_state.uploaded_data is not None and analyze_data_checkbox:
-                # Check if user requested data analysis or insights
                 if "analyze" in user_input.lower() or "insight" in user_input.lower():
-                    # Create a description of the data for the AI model
+                    # Generate prompt using data description + dictionary (if any)
                     data_description = st.session_state.uploaded_data.describe().to_string()
                     prompt = f"Analyze the following dataset and provide insights:\n\n{data_description}"
 
-                    # Generate AI response for the data analysis
+                    if st.session_state.uploaded_dict:
+                        prompt += f"\n\nHere is a dictionary of the columns for context:\n{st.session_state.uploaded_dict}"
+
                     response = model.generate_content(prompt)
                     bot_response = response.text
 
-                    # Store and display the AI-generated analysis
-                    st.session_state.chat_history.append(("assistant", bot_response))
-                    st.chat_message("assistant").markdown(bot_response)
                 else:
-                    # Normal conversation with the bot
                     response = model.generate_content(user_input)
                     bot_response = response.text
 
-                    st.session_state.chat_history.append(("assistant", bot_response))
-                    st.chat_message("assistant").markdown(bot_response)
             elif not analyze_data_checkbox:
-                # Respond that analysis is not enabled if the checkbox is not selected
-                bot_response = "Data analysis is disabled. Please select the 'Analyze CSV Data with AI' checkbox to enable analysis."
-                st.session_state.chat_history.append(("assistant", bot_response))
-                st.chat_message("assistant").markdown(bot_response)
+                bot_response = "Data analysis is disabled. Please check 'Analyze CSV Data with AI'."
             else:
-                # Respond with a message to upload a CSV file if not yet done
-                bot_response = "Please upload a CSV file first, then ask me to analyze it."
-                st.session_state.chat_history.append(("assistant", bot_response))
-                st.chat_message("assistant").markdown(bot_response)
+                bot_response = "Please upload a CSV data file first."
+
+            st.session_state.chat_history.append(("assistant", bot_response))
+            st.chat_message("assistant").markdown(bot_response)
+
         except Exception as e:
             st.error(f"An error occurred while generating the response: {e}")
     else:
