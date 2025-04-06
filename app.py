@@ -2,100 +2,101 @@ import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 
-# Set up the Streamlit app layout
-st.title("🐧 My Chatbot and Data Analysis App")
-st.subheader("Conversation and Data Analysis")
+# Page config
+st.set_page_config(page_title="📊 CSV Chatbot with Gemini", layout="wide")
 
-# --- API Key ---
-gemini_api_key = st.text_input("Gemini API Key: ", placeholder="Type your API Key here...", type="password")
+st.title("🤖 CSV Chatbot with Gemini")
+st.write("Upload your dataset and ask questions in natural language!")
 
-# --- Load Gemini Model ---
+# API Key input
+gemini_api_key = st.text_input("🔑 Enter Gemini API Key", type="password")
 model = None
+
 if gemini_api_key:
     try:
         genai.configure(api_key=gemini_api_key)
         model = genai.GenerativeModel("gemini-2.0-flash-lite")
-        st.success("Gemini API Key successfully configured.")
+        st.success("✅ Gemini API Key configured.")
     except Exception as e:
-        st.error(f"An error occurred while setting up the Gemini model: {e}")
+        st.error(f"❌ Failed to configure Gemini: {e}")
 
-# --- Session State Setup ---
+# Session state init
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-if "uploaded_data" not in st.session_state:
-    st.session_state.uploaded_data = None
+if "dataframe" not in st.session_state:
+    st.session_state.dataframe = None
 
-if "uploaded_dict" not in st.session_state:
-    st.session_state.uploaded_dict = None
+if "dictionary" not in st.session_state:
+    st.session_state.dictionary = None
 
-# --- Display Chat History ---
-for role, message in st.session_state.chat_history:
-    st.chat_message(role).markdown(message)
+# File upload
+st.subheader("📤 Upload CSV and Optional Dictionary")
 
-# --- File Uploads ---
-st.subheader("Upload CSV for Analysis")
-uploaded_file = st.file_uploader("Choose a **CSV data file**", type=["csv"])
+data_file = st.file_uploader("Upload CSV Data File", type=["csv"])
+dict_file = st.file_uploader("Upload Dictionary File (optional)", type=["csv", "txt"])
 
-st.subheader("Upload Dictionary File (optional)")
-dict_file = st.file_uploader("Choose a **dictionary file** (CSV or TXT)", type=["csv", "txt"])
-
-# --- Load Files ---
-if uploaded_file is not None:
+# Load files
+if data_file:
     try:
-        st.session_state.uploaded_data = pd.read_csv(uploaded_file)
-        st.success("Data file uploaded successfully.")
-        st.write("### Data Preview")
-        st.dataframe(st.session_state.uploaded_data.head())
+        df = pd.read_csv(data_file)
+        st.session_state.dataframe = df
+        st.success("✅ Data loaded")
+        st.write("### Preview of Data")
+        st.dataframe(df.head())
     except Exception as e:
-        st.error(f"Failed to read the data file: {e}")
+        st.error(f"❌ Error reading data file: {e}")
 
-if dict_file is not None:
+if dict_file:
     try:
         if dict_file.name.endswith(".csv"):
             dict_df = pd.read_csv(dict_file)
-            st.session_state.uploaded_dict = dict_df.to_string()
+            dict_text = dict_df.to_string(index=False)
         else:
-            st.session_state.uploaded_dict = dict_file.read().decode("utf-8")
-        st.success("Dictionary file uploaded successfully.")
+            dict_text = dict_file.read().decode("utf-8")
+        st.session_state.dictionary = dict_text
+        st.success("📘 Dictionary loaded")
     except Exception as e:
-        st.error(f"Failed to read the dictionary file: {e}")
+        st.error(f"❌ Error reading dictionary file: {e}")
 
-# --- Checkbox for Analysis ---
-analyze_data_checkbox = st.checkbox("Analyze CSV Data with AI")
+# Chat input
+st.subheader("💬 Ask Questions About Your Data")
 
-# --- User Chat Input ---
-if user_input := st.chat_input("Type your message here..."):
-    st.session_state.chat_history.append(("user", user_input))
-    st.chat_message("user").markdown(user_input)
+if prompt := st.chat_input("Ask me anything about your data..."):
+    # Display user message
+    st.session_state.chat_history.append(("user", prompt))
+    st.chat_message("user").markdown(prompt)
 
-    if model:
+    if model and st.session_state.dataframe is not None:
         try:
-            if st.session_state.uploaded_data is not None and analyze_data_checkbox:
-                if "analyze" in user_input.lower() or "insight" in user_input.lower():
-                    # Generate prompt using data description + dictionary (if any)
-                    data_description = st.session_state.uploaded_data.describe().to_string()
-                    prompt = f"Analyze the following dataset and provide insights:\n\n{data_description}"
+            # Build context for Gemini: data + dictionary
+            df_desc = st.session_state.dataframe.describe(include='all').to_string()
+            sample_data = st.session_state.dataframe.head(3).to_string()
+            dict_info = st.session_state.dictionary or "No dictionary provided."
 
-                    if st.session_state.uploaded_dict:
-                        prompt += f"\n\nHere is a dictionary of the columns for context:\n{st.session_state.uploaded_dict}"
+            system_prompt = f"""
+You are a data analyst AI. You are helping the user understand and analyze their CSV data.
 
-                    response = model.generate_content(prompt)
-                    bot_response = response.text
+**Data Preview:**
+{sample_data}
 
-                else:
-                    response = model.generate_content(user_input)
-                    bot_response = response.text
+**Statistical Summary:**
+{df_desc}
 
-            elif not analyze_data_checkbox:
-                bot_response = "Data analysis is disabled. Please check 'Analyze CSV Data with AI'."
-            else:
-                bot_response = "Please upload a CSV data file first."
+**Data Dictionary:**
+{dict_info}
 
-            st.session_state.chat_history.append(("assistant", bot_response))
-            st.chat_message("assistant").markdown(bot_response)
+Now, answer the following question based on this data.
+"""
+
+            response = model.generate_content(system_prompt + "\n\n" + prompt)
+            answer = response.text
+
+            st.session_state.chat_history.append(("assistant", answer))
+            st.chat_message("assistant").markdown(answer)
 
         except Exception as e:
-            st.error(f"An error occurred while generating the response: {e}")
+            st.error(f"⚠️ Error generating response: {e}")
     else:
-        st.warning("Please configure the Gemini API Key to enable chat responses.")
+        st.warning("⚠️ Please upload a CSV file and enter a valid API key.")
+
