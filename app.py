@@ -9,7 +9,7 @@ st.title("🤖 CSV Chatbot with Gemini")
 st.write("Upload your dataset and ask questions in natural language!")
 
 # API Key input
-gemini_api_key = st.text_input("🔑 Enter Gemini API Key", type="password")
+gemini_api_key = st.secrets['gemini_api_key']
 model = None
 
 if gemini_api_key:
